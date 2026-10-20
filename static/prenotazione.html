@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>La mia prenotazione · CSI Imola Highlights</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="nav"><div class="container">
+  <a href="/" class="logo"><span class="dot"></span><span data-brand>CSI Imola Highlights</span></a>
+  <div class="nav-links"><a href="/#prenota" class="btn sm">Prenota</a></div>
+</div></nav>
+
+<section>
+  <div class="container" style="max-width:620px">
+    <div class="section-title"><h2>La mia prenotazione</h2><p class="muted">Inserisci il codice ricevuto al momento della prenotazione.</p></div>
+    <form class="card" id="lookup" style="display:flex;gap:10px">
+      <input id="code" placeholder="es. K7P2QX" style="text-transform:uppercase;font-size:1.1rem;letter-spacing:.1em" required>
+      <button class="btn">Cerca</button>
+    </form>
+    <div id="result" style="margin-top:18px"></div>
+  </div>
+</section>
+
+<script src="/static/common.js"></script>
+<script>
+const STATUS = {
+  pending: ["In attesa di conferma", "amber"], confirmed: ["Confermata", "green"], cancelled: ["Annullata", "red"],
+};
+const FSTATUS = {
+  open: "In programma", booked: "In programma", recorded: "Ripresa effettuata · video in lavorazione",
+  delivered: "Video pronto!", cancelled: "Partita annullata",
+};
+async function lookup(code) {
+  const box = $("#result");
+  box.innerHTML = `<p class="muted">Ricerca…</p>`;
+  try {
+    const b = await api(`/api/public/bookings/${encodeURIComponent(code)}`);
+    const [st, cls] = STATUS[b.status] || [b.status, ""];
+    const steps = ["booked", "recorded", "delivered"];
+    const idx = Math.max(0, steps.indexOf(b.fixture_status === "open" ? "booked" : b.fixture_status));
+    box.innerHTML = `<div class="card">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <span class="pill ${cls}">${st}</span><span class="pill ${b.paid ? "green" : ""}">${b.paid ? "Pagato" : "Da pagare: " + euro(b.price)}</span>
+      </div>
+      <h2 style="margin-top:14px">${esc(b.home)} – ${esc(b.away)}</h2>
+      <p class="muted">${fmtDate(b.date)} · ore ${esc(b.time)} · ${esc(b.venue)} · ${COMP_LABEL[b.competition]}<br>
+      Squadra: <b style="color:var(--text)">${esc(b.team)}</b> · Formula: ${PKG_LABEL[b.package]}${b.social ? " + Social" : ""}</p>
+      ${b.status !== "cancelled" ? `
+      <div class="bar" style="margin:18px 0 6px"><div style="width:${(idx + 1) / 3 * 100}%"></div></div>
+      <div style="display:flex;justify-content:space-between" class="small muted"><span>Prenotata</span><span>Ripresa</span><span>Video pronto</span></div>
+      <p style="margin-top:14px"><b>${FSTATUS[b.fixture_status] || ""}</b></p>` : ""}
+      ${b.video_url || b.highlights_url ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        ${b.video_url ? `<a class="btn" href="${esc(b.video_url)}" target="_blank" rel="noopener">▶ Partita completa</a>` : ""}
+        ${b.highlights_url ? `<a class="btn ghost" href="${esc(b.highlights_url)}" target="_blank" rel="noopener">⚡ Highlights</a>` : ""}
+      </div>` : ""}
+    </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="alert err">${esc(e.message)}</div>`;
+  }
+}
+applyBranding();
+$("#lookup").addEventListener("submit", e => { e.preventDefault(); const c = $("#code").value.trim().toUpperCase(); history.replaceState(null, "", "?code=" + c); lookup(c); });
+const qc = new URLSearchParams(location.search).get("code");
+if (qc) { $("#code").value = qc; lookup(qc); }
+</script>
+</body>
+</html>

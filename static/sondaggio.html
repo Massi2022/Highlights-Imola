@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sondaggio squadre CSI Imola · Video e highlights</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="nav"><div class="container">
+  <a href="/" class="logo"><span class="dot"></span><span data-brand>CSI Imola Highlights</span></a>
+</div></nav>
+
+<section>
+  <div class="container" style="max-width:720px">
+    <div class="section-title">
+      <span class="badge">2 minuti · per capitani e dirigenti</span>
+      <h2>Video e highlights per la tua squadra?</h2>
+      <p class="muted">Stiamo organizzando le riprese AI delle partite del Calcio a 7 CSI Imola. Aiutaci a capire cosa vi serve davvero.</p>
+    </div>
+    <form class="card" id="survey">
+      <div class="row">
+        <div class="field"><label>Nome squadra *</label><input name="team" required></div>
+        <div class="field"><label>Il tuo ruolo</label>
+          <select name="role"><option>Capitano</option><option>Dirigente / Presidente</option><option>Giocatore</option></select></div>
+      </div>
+
+      <div class="field"><label>La squadra ha già una pagina Instagram o TikTok?</label>
+        <div class="choice">
+          <label><input type="radio" name="has_social" value="si_attiva"><span>Sì, attiva</span></label>
+          <label><input type="radio" name="has_social" value="si_ferma"><span>Sì, ma ferma</span></label>
+          <label><input type="radio" name="has_social" value="no"><span>No</span></label>
+        </div></div>
+
+      <div class="field"><label>Quanto tempo dedicate (o vorreste dedicare) a postare gol e momenti delle partite?</label>
+        <select name="posting_time">
+          <option value="">—</option><option value="zero">Zero, nessuno ha tempo</option>
+          <option value="poco">Poco, qualche foto ogni tanto</option>
+          <option value="vorremmo">Vorremmo farlo ma è troppo sbatti</option>
+          <option value="tanto">Ci teniamo molto, postiamo spesso</option>
+        </select></div>
+
+      <div class="field"><label>Quanto vi piacerebbe rivedere i vostri gol (e le papere del portiere 😄)? <span id="interest-v" class="muted">3/5</span></label>
+        <input type="range" name="interest" min="1" max="5" value="3" style="padding:0;accent-color:var(--green)"></div>
+
+      <div class="field"><label>Cosa vi interessa di più?</label>
+        <select name="favorite">
+          <option value="">—</option><option value="gol_social">Le clip dei gol da postare sui social</option>
+          <option value="partita">La partita intera da rivedere</option><option value="tattica">Analizzare errori e tattica</option>
+          <option value="ricordo">Un ricordo della stagione</option>
+        </select></div>
+
+      <div class="field"><label>Se la squadra potesse avere il video completo + gli highlights dei gol pronti per Instagram il giorno dopo, quale formula preferireste? *</label>
+        <div class="choice" style="flex-direction:column">
+          <label><input type="radio" name="option" value="A" required><span>A · Partita singola a chiamata: <b data-price-s="price_single">25</b> € a squadra<em>circa 2 € a giocatore</em></span></label>
+          <label><input type="radio" name="option" value="B"><span>B · Pacchetto 5 partite: <b data-price-s="price_pack">100</b> € a squadra<em>20 € a partita · meno di 2 € a testa</em></span></label>
+          <label><input type="radio" name="option" value="C"><span>C · Solo fase finale / Coppa a eliminazione diretta: <b data-price-s="price_cup">30</b> € a partita</span></label>
+          <label><input type="radio" name="option" value="none"><span>Nessuna, non ci interessa</span></label>
+        </div></div>
+
+      <div class="field"><label>Vi interesserebbe anche un Reel/TikTok già montato con musica (+15 € a partita)?</label>
+        <div class="choice">
+          <label><input type="radio" name="social_addon" value="si"><span>Sì</span></label>
+          <label><input type="radio" name="social_addon" value="forse"><span>Forse</span></label>
+          <label><input type="radio" name="social_addon" value="no"><span>No</span></label>
+        </div></div>
+
+      <div class="field"><label>Avete uno sponsor sulla maglia? Quale?</label>
+        <input name="sponsor" placeholder="es. Pizzeria Da Mario, Bar Centrale…"></div>
+
+      <div class="row">
+        <div class="field"><label>Il tuo nome</label><input name="name"></div>
+        <div class="field"><label>Cellulare (per la partita gratis di prova)</label><input name="phone" type="tel"></div>
+      </div>
+      <div class="field"><label>Altro da dirci?</label><textarea name="notes" rows="2"></textarea></div>
+      <div id="err"></div>
+      <button class="btn" style="width:100%">Invia risposte</button>
+    </form>
+    <div class="card hidden center" id="thanks">
+      <h2>🙌 Grazie!</h2>
+      <p class="muted">Le tue risposte ci aiutano a costruire il servizio. Se hai lasciato il numero ti contattiamo per una partita di prova.</p>
+      <a class="btn" href="/#prenota">Guarda come prenotare</a>
+    </div>
+  </div>
+</section>
+
+<script src="/static/common.js"></script>
+<script>
+applyBranding().then(cfg => {
+  if (cfg) $all("[data-price-s]").forEach(el => (el.textContent = cfg.prices[el.dataset.priceS]));
+});
+const f = $("#survey");
+f.interest.addEventListener("input", () => ($("#interest-v").textContent = f.interest.value + "/5"));
+f.addEventListener("submit", async e => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(f).entries());
+  data.interest = Number(data.interest || 0);
+  try {
+    await api("/api/public/survey", { method: "POST", body: data });
+    f.classList.add("hidden"); $("#thanks").classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) { $("#err").innerHTML = `<div class="alert err">${esc(err.message)}</div>`; }
+});
+</script>
+</body>
+</html>
