@@ -73,11 +73,27 @@ function update() {
   renderSides();
   const p = payload();
   const m = currentMatch();
+  const pr = state.cfg ? state.cfg.prices : {};
   $("#team-code-field").classList.toggle("hidden", p.package !== "pack");
   if (!m) {
-    $("#sum-match").innerHTML = "Nessuna partita selezionata";
-    $("#sum-total").textContent = "— €";
-    $("#sum-lines").innerHTML = "";
+    $("#sum-match").innerHTML = "Seleziona una partita qui a fianco per completare";
+    const previewLines = [];
+    let est = 0;
+    if (p.package === "buy_pack") {
+      previewLines.push(`Pacchetto ${state.cfg.pack_size} partite: ${euro(pr.price_pack)}`);
+      est += pr.price_pack;
+    } else if (p.package === "pack") {
+      previewLines.push(`1 partita dal pacchetto: 0 €`);
+    } else {
+      previewLines.push(`Partita singola: ${euro(pr.price_single)}`);
+      est += pr.price_single;
+    }
+    if (p.social) {
+      previewLines.push(`Gestione Social: +${euro(pr.price_social)}`);
+      est += pr.price_social;
+    }
+    $("#sum-lines").innerHTML = previewLines.join("<br>");
+    $("#sum-total").textContent = euro(est);
     $("#quote-warning").innerHTML = "";
     return;
   }
@@ -89,10 +105,9 @@ function update() {
   quoteTimer = setTimeout(async () => {
     try {
       const q = await api("/api/public/quote", { method: "POST", body: { ...p, captain: p.captain || "x", phone: p.phone || "x" } });
-      const pr = state.cfg.prices;
       const lines = [];
       if (p.package === "pack") lines.push(`1 partita dal pacchetto: 0 €`);
-      else if (p.package === "buy_pack") lines.push(`Pacchetto ${state.cfg.pack_size} partite: ${euro(pr.price_pack)}`);
+      else if (p.package === "buy_pack") lines.push(`Pacchetto ${state.cfg.pack_size} partite: ${euro(pr.price_pack)} (1ª partita inclusa)`);
       else if (q.split) lines.push(`Quota 2ª squadra (avversario già prenotato): ${euro(pr.price_split)}`);
       else if (m.competition !== "campionato") lines.push(`Partita Coppa/Playoff: ${euro(pr.price_cup)}`);
       else lines.push(`Partita singola: ${euro(pr.price_single)}`);
@@ -166,6 +181,12 @@ async function loadFixtures() {
   $("#usage-text").textContent = `${fmtMonth(u.month)}: ${left} partite ancora prenotabili su ${u.max_matches}`;
   $("#venues").innerHTML = state.cfg.venues.map(v => `<option value="${esc(v)}">`).join("");
   $("#nf-date").min = new Date().toISOString().slice(0, 10);
+
+  $all("[data-select-pkg]").forEach(btn => btn.addEventListener("click", () => {
+    const pkg = btn.dataset.selectPkg;
+    const radio = $(`input[name=package][value="${pkg}"]`);
+    if (radio) { radio.checked = true; update(); }
+  }));
 
   $all(".tabs button").forEach(b => b.addEventListener("click", () => {
     $all(".tabs button").forEach(x => x.classList.remove("active"));

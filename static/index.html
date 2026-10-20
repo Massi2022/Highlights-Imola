@@ -14,8 +14,9 @@
     <div class="nav-links">
       <a href="#come-funziona">Come funziona</a>
       <a href="#prezzi">Prezzi</a>
-      <a href="#faq">FAQ</a>
+      <a href="/sondaggio">📝 Sondaggio</a>
       <a href="/prenotazione">La mia prenotazione</a>
+      <a href="/admin">⚙️ Gestione</a>
       <a href="#prenota" class="btn sm">Prenota</a>
     </div>
   </div>
@@ -29,7 +30,7 @@
       <p class="lead">Riprendiamo la vostra partita con una telecamera AI che segue l'azione da sola. Ricevete il <b>video completo</b> + gli <b>highlights dei gol</b> pronti da postare su Instagram e TikTok.</p>
       <div class="cta">
         <a href="#prenota" class="btn">Prenota la tua partita</a>
-        <a href="#prezzi" class="btn ghost">Da <span data-price="price_single">25</span> € a squadra</a>
+        <a href="/sondaggio" class="btn ghost">📝 Compila il sondaggio (2 min)</a>
       </div>
       <p class="muted small" style="margin-top:18px">≈ 2 € a giocatore · nessun abbonamento · paghi solo le partite che vuoi</p>
     </div>
@@ -68,6 +69,7 @@
         <div class="price"><span data-price="price_single">25</span> € <small>/ partita</small></div>
         <p class="muted small">≈ 2 € a giocatore</p>
         <ul><li>Video completo</li><li>Highlights automatici dei gol</li><li>Link pronto il giorno dopo</li></ul>
+        <a href="#prenota" class="btn ghost sm" style="margin-top:16px" data-select-pkg="single">Scegli singola</a>
       </div>
       <div class="card price-card featured">
         <span class="tag">PIÙ SCELTO</span>
@@ -75,18 +77,21 @@
         <div class="price"><span data-price="price_pack">100</span> € <small>/ squadra</small></div>
         <p class="muted small"><span data-pack-unit>20</span> € a partita · meno di 2 € a testa</p>
         <ul><li>Tutto della partita singola</li><li>Codice squadra da usare quando volete</li><li>Priorità sulle serate più richieste</li></ul>
+        <a href="#prenota" class="btn sm" style="margin-top:16px" data-select-pkg="buy_pack">Scegli pacchetto 5 partite</a>
       </div>
       <div class="card price-card">
         <h3>Coppa & Playoff</h3>
         <div class="price"><span data-price="price_cup">30</span> € <small>/ partita</small></div>
         <p class="muted small">Eliminazione diretta e finali</p>
         <ul><li>Le partite che contano davvero</li><li>Finali allo Stadio Galli</li><li>Ricordo della stagione</li></ul>
+        <a href="#prenota" class="btn ghost sm" style="margin-top:16px" data-select-pkg="single">Prenota Coppa/Playoff</a>
       </div>
       <div class="card price-card">
         <h3>Anche l'avversario?</h3>
         <div class="price"><span data-price="price_split">15</span> € <small>/ partita</small></div>
         <p class="muted small">Se l'altra squadra ha già prenotato</p>
         <ul><li>Stessa ripresa, stessi highlight</li><li>Il prezzo si applica in automatico</li><li>Lo vedi nel calendario</li></ul>
+        <a href="#prenota" class="btn ghost sm" style="margin-top:16px" data-select-pkg="single">Vedi partite già prenotate</a>
       </div>
     </div>
     <div class="grid g2" style="margin-top:18px">
@@ -148,10 +153,19 @@
         </div>
 
         <h3 style="margin-top:18px">3 · Formula</h3>
-        <div class="choice">
-          <label><input type="radio" name="package" value="single" checked><span>Singola partita<em>paghi solo questa</em></span></label>
-          <label><input type="radio" name="package" value="buy_pack"><span>Compra pacchetto <span data-pack-size>5</span><em><span data-price="price_pack">100</span> € · questa è la 1ª</em></span></label>
-          <label><input type="radio" name="package" value="pack"><span>Ho un codice squadra<em>usa 1 partita del pacchetto</em></span></label>
+        <div class="choice choice-pkg">
+          <label>
+            <input type="radio" name="package" value="single" checked>
+            <span><b>Singola partita</b><em><span data-price="price_single">25</span> € · paghi solo questa</em></span>
+          </label>
+          <label>
+            <input type="radio" name="package" value="buy_pack">
+            <span><small class="pkg-badge">PIÙ CONVENIENTE</small><b>Pacchetto <span data-pack-size>5</span> partite · <span data-price="price_pack">100</span> €</b><em><span data-pack-unit>20</span> € a partita · questa è la 1ª + ricevi il codice per le altre 4</em></span>
+          </label>
+          <label>
+            <input type="radio" name="package" value="pack">
+            <span><b>Ho già un codice pacchetto</b><em>scala 1 partita dal tuo pacchetto (0 €)</em></span>
+          </label>
         </div>
         <div class="field hidden" id="team-code-field" style="margin-top:12px">
           <label>Codice pacchetto squadra</label>
