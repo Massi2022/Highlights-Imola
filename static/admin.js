@@ -133,7 +133,7 @@ function fxCard(f) {
         <div class="small muted">${fmtDate(f.date)} · ${esc(f.time)} · ${esc(f.venue)} · ${COMP_LABEL[f.competition]} ${f.created_by === "client" ? "· inserita dal cliente" : ""}</div></div>
       <div class="actions"><span class="pill ${cls}">${st}</span>
         ${splitMsg ? `<button class="btn sm ghost" data-copy="${esc(splitMsg)}" title="Copia il messaggio per il capitano avversario">💰 Proponi split</button>` : ""}
-        ${!f.bookings.length ? `<button class="btn sm danger" data-fx-del="${f.id}">Elimina</button>` : ""}</div>
+        <button class="btn sm danger" data-fx-del="${f.id}">Elimina</button></div>
     </header>
     ${f.bookings.map(b => bookingLine(b, f)).join("")}
     <div class="row3" style="margin-top:12px;align-items:end">
@@ -162,7 +162,8 @@ function bookingLine(b, f) {
     <span class="actions" style="margin-left:auto">
       ${b.status === "pending" ? `<button class="btn sm" data-bk-status="confirmed" data-id="${b.id}">Conferma</button>` : ""}
       <a class="btn sm wa" target="_blank" rel="noopener" href="${waLink(b.phone, f.status === "delivered" ? videoMsg : confirmMsg)}">${f.status === "delivered" ? "Invia video" : "WhatsApp"}</a>
-      ${b.status !== "cancelled" ? `<button class="btn sm danger" data-bk-status="cancelled" data-id="${b.id}">Annulla</button>` : ""}
+      ${b.status !== "cancelled" ? `<button class="btn sm ghost" data-bk-status="cancelled" data-id="${b.id}">Annulla</button>` : ""}
+      <button class="btn sm danger" data-bk-del="${b.id}" title="Elimina prenotazione">🗑️</button>
     </span>
     ${b.notes ? `<div class="small muted" style="width:100%">📝 ${esc(b.notes)}</div>` : ""}
   </div>`;
@@ -176,6 +177,12 @@ function bindBookingActions(reload) {
   $all("[data-bk-status]").forEach(btn => btn.addEventListener("click", async () => {
     if (btn.dataset.bkStatus === "cancelled" && !confirm("Annullare la prenotazione?")) return;
     await api(`/api/admin/bookings/${btn.dataset.id}`, { method: "PATCH", body: { status: btn.dataset.bkStatus } });
+    reload();
+  }));
+  $all("[data-bk-del]").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Eliminare definitivamente questa prenotazione?")) return;
+    await api(`/api/admin/bookings/${btn.dataset.bkDel}`, { method: "DELETE" });
+    toast("Prenotazione eliminata");
     reload();
   }));
 }
@@ -228,7 +235,7 @@ async function bookings() {
   main().innerHTML = head("Prenotazioni", `<input id="bk-q" placeholder="Cerca squadra, capitano, codice…" style="width:260px">
       <select id="bk-f" style="width:auto"><option value="">Tutte</option><option value="unpaid">Da incassare</option><option value="pending">Da confermare</option></select>
       <button class="btn sm ghost" id="bk-csv">⬇ CSV</button>`) +
-    `<div class="card table-wrap"><table id="bk-table"><thead><tr><th>Partita</th><th>Squadra</th><th>Capitano</th><th>Formula</th><th>Prezzo</th><th>Pagato</th><th>Stato</th><th>Codice</th></tr></thead><tbody></tbody></table></div>`;
+    `<div class="card table-wrap"><table id="bk-table"><thead><tr><th>Partita</th><th>Squadra</th><th>Capitano</th><th>Formula</th><th>Prezzo</th><th>Pagato</th><th>Stato</th><th>Codice</th><th></th></tr></thead><tbody></tbody></table></div>`;
   const render = () => {
     const q = $("#bk-q").value.toLowerCase(), f = $("#bk-f").value;
     const rowsF = list.filter(b => (!q || [b.team, b.captain, b.code, b.phone, b.home, b.away].join(" ").toLowerCase().includes(q))
@@ -241,7 +248,8 @@ async function bookings() {
       <td>${euro(b.price)}</td>
       <td><input type="checkbox" data-bk-paid="${b.id}" ${b.paid ? "checked" : ""} style="width:auto;accent-color:var(--green)"></td>
       <td><select data-bk-sel="${b.id}" style="width:auto;padding:6px">${Object.entries(BK_STATUS).map(([k, v]) => `<option value="${k}" ${k === b.status ? "selected" : ""}>${v[0]}</option>`).join("")}</select></td>
-      <td class="small muted">${esc(b.code)}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Nessuna prenotazione</td></tr>`;
+      <td class="small muted">${esc(b.code)}</td>
+      <td><button class="btn sm danger" data-bk-del="${b.id}" title="Elimina prenotazione">🗑️</button></td></tr>`).join("") || `<tr><td colspan="9" class="muted">Nessuna prenotazione</td></tr>`;
     bindBookingActions(bookings);
     $all("[data-bk-sel]").forEach(s => s.addEventListener("change", async () => {
       await api(`/api/admin/bookings/${s.dataset.bkSel}`, { method: "PATCH", body: { status: s.value } }); toast("Aggiornato");
@@ -272,14 +280,23 @@ async function teams() {
       <td>${t.used} / ${t.credits_total} <div class="bar" style="margin-top:4px;width:100px"><div style="width:${t.used / t.credits_total * 100}%"></div></div></td>
       <td>${euro(t.price)}</td>
       <td><input type="checkbox" data-team-paid="${t.id}" ${t.paid ? "checked" : ""} style="width:auto;accent-color:var(--green)"></td>
-      <td class="actions"><button class="btn sm ghost" data-team-credit="${t.id}" data-total="${t.credits_total}">+1 partita</button>
-        ${t.phone ? `<a class="btn sm wa" target="_blank" href="${waLink(t.phone, `Ciao ${t.captain}! Il codice del vostro pacchetto è ${t.code}: vi restano ${t.credits_total - t.used} partite. Prenotate qui: ${siteUrl()}/#prenota`)}">WhatsApp</a>` : ""}</td></tr>`).join("")
+      <td class="actions">
+        <button class="btn sm ghost" data-team-credit="${t.id}" data-total="${t.credits_total}">+1 partita</button>
+        ${t.phone ? `<a class="btn sm wa" target="_blank" href="${waLink(t.phone, `Ciao ${t.captain}! Il codice del vostro pacchetto è ${t.code}: vi restano ${t.credits_total - t.used} partite. Prenotate qui: ${siteUrl()}/#prenota`)}">WhatsApp</a>` : ""}
+        <button class="btn sm danger" data-team-del="${t.id}" title="Rimuovi pacchetto">🗑️ Rimuovi</button>
+      </td></tr>`).join("")
     || `<tr><td colspan="7" class="muted">Nessun pacchetto venduto</td></tr>`}</table></div>`;
   $all("[data-team-paid]").forEach(cb => cb.addEventListener("change", async () => {
     await api(`/api/admin/teams/${cb.dataset.teamPaid}`, { method: "PATCH", body: { paid: cb.checked } }); toast("Aggiornato");
   }));
   $all("[data-team-credit]").forEach(b => b.addEventListener("click", async () => {
     await api(`/api/admin/teams/${b.dataset.teamCredit}`, { method: "PATCH", body: { credits_total: Number(b.dataset.total) + 1 } }); teams();
+  }));
+  $all("[data-team-del]").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("Rimuovere questo pacchetto squadra?")) return;
+    await api(`/api/admin/teams/${b.dataset.teamDel}`, { method: "DELETE" });
+    toast("Pacchetto rimosso");
+    teams();
   }));
   $("#add-team").addEventListener("click", () => {
     $("#dlg-body").innerHTML = `<h3>Nuovo pacchetto</h3>
@@ -398,16 +415,41 @@ async function settings() {
     ["pack_size", "Partite nel pacchetto", "number"], ["price_cup", "Prezzo Coppa/Playoff €", "number"],
     ["price_split", "Prezzo 2ª squadra (split) €", "number"], ["price_social", "Extra Gestione Social €", "number"],
   ];
-  main().innerHTML = head("Impostazioni") + `<form class="card" id="set-form"><div class="grid g2">
+  const token = localStorage.getItem("adminToken");
+  main().innerHTML = head("Impostazioni") + `
+    <div class="alert ${s._cloud_sync ? "ok" : "err"}" style="margin-bottom:18px">
+      ${s._cloud_sync
+        ? "☁️ <b>Salvataggio Cloud GitHub attivo:</b> tutte le modifiche sono salvate permanentemente su GitHub e non si perdono mai anche se Render si riavvia."
+        : "⚠️ <b>Attenzione (Render piano gratuito):</b> Senza la variabile <code>GITHUB_TOKEN</code> su Render, quando il server gratuito va in standby dopo 15 minuti i dati tornano allo stato iniziale. Aggiungi <code>GITHUB_TOKEN</code> nelle Environment Variables di Render (col tuo token GitHub) per salvare tutto in automatico per sempre!"}
+    </div>
+    <form class="card" id="set-form"><div class="grid g2">
     ${F.map(([k, l, t]) => `<div class="field"><label>${l}</label><input name="${k}" type="${t}" step="any" value="${esc(s[k])}"></div>`).join("")}
     </div><div class="field"><label>Campi (separati da virgola)</label><input name="venues" value="${esc(s.venues)}"></div>
     <button class="btn">Salva impostazioni</button></form>
-    <div class="alert info" style="margin-top:18px">La password dell'area gestore si cambia con la variabile d'ambiente <code>ADMIN_PASSWORD</code> all'avvio del server.</div>`;
+    <div class="card" style="margin-top:18px">
+      <h3>💾 Backup e Ripristino Database</h3>
+      <p class="muted small">Puoi scaricare una copia di sicurezza del database sul tuo computer o ricaricarla in qualsiasi momento.</p>
+      <div class="actions" style="margin-top:10px">
+        <a class="btn sm ghost" href="/api/admin/backup?token=${encodeURIComponent(token)}" download>⬇ Scarica backup (.db)</a>
+        <label class="btn sm ghost" style="margin:0;cursor:pointer">⬆ Ripristina da file (.db)<input type="file" id="restore-file" accept=".db,.sqlite" style="display:none"></label>
+      </div>
+    </div>`;
   $("#set-form").addEventListener("submit", async e => {
     e.preventDefault();
     await api("/api/admin/settings", { method: "PUT", body: Object.fromEntries(new FormData(e.target).entries()) });
     cfgCache = await api("/api/admin/settings");
     toast("Impostazioni salvate");
+  });
+  $("#restore-file").addEventListener("change", async e => {
+    const file = e.target.files[0];
+    if (!file || !confirm("Sovrascrivere il database attuale con questo backup?")) return;
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    await api("/api/admin/restore", { method: "POST", body: { data_b64: btoa(binary) } });
+    toast("Database ripristinato!");
+    settings();
   });
 }
 
@@ -417,3 +459,4 @@ $("#login-form").addEventListener("submit", login);
 $("#logout").addEventListener("click", () => { localStorage.removeItem("adminToken"); location.reload(); });
 $all(".sidebar button[data-view]").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
 if (localStorage.getItem("adminToken")) start();
+

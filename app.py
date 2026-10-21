@@ -9,19 +9,24 @@ Pagine:
     /prenotazione    -> il cliente controlla lo stato e scarica il video
     /admin           -> pannello di gestione (password: env ADMIN_PASSWORD)
 """
+import base64
 import hashlib
 import hmac
+import json
 import os
 import secrets
+import shutil
 import sqlite3
 import string
+import threading
+import urllib.request
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -30,6 +35,9 @@ DB_PATH = Path(os.environ.get("DB_PATH", BASE_DIR / "data.db"))
 STATIC_DIR = BASE_DIR / "static"
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "imola2026")
 SECRET = os.environ.get("APP_SECRET", "cambia-questo-segreto")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "Massi2022/Highlights-Imola").strip()
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main").strip()
 
 DEFAULT_SETTINGS = {
     "brand_name": "CSI Imola Highlights",
@@ -101,20 +109,81 @@ CREATE TABLE IF NOT EXISTS sponsors (
 );
 """
 
+_sync_lock = threading.Lock()
+
+
+def _pull_db_from_github():
+    """Al boot su Render, scarica l'ultimo data.db salvato su GitHub se GITHUB_TOKEN è configurato."""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/data.db?ref={GITHUB_BRANCH}"
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "csi-imola-highlights",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = json.loads(resp.read().decode())
+            if payload.get("content"):
+                DB_PATH.write_bytes(base64.b64decode(payload["content"]))
+    except Exception as exc:
+        print(f"[sync] Pull da GitHub ignorato: {exc}")
+
+
+def _push_db_to_github():
+    """Salva data.db su GitHub in background così non si perde mai quando Render va in sleep."""
+    if not GITHUB_TOKEN or not GITHUB_REPO or not DB_PATH.exists():
+        return
+    def _worker():
+        with _sync_lock:
+            try:
+                url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/data.db"
+                headers = {
+                    "Authorization": f"Bearer {GITHUB_TOKEN}",
+                    "Accept": "application/vnd.github+json",
+                    "Content-Type": "application/json",
+                    "User-Agent": "csi-imola-highlights",
+                }
+                sha = None
+                try:
+                    req = urllib.request.Request(f"{url}?ref={GITHUB_BRANCH}", headers=headers)
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        sha = json.loads(resp.read().decode()).get("sha")
+                except Exception:
+                    pass
+                body = {
+                    "message": "Auto-sync database [skip render]",
+                    "content": base64.b64encode(DB_PATH.read_bytes()).decode(),
+                    "branch": GITHUB_BRANCH,
+                }
+                if sha:
+                    body["sha"] = sha
+                req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="PUT")
+                urllib.request.urlopen(req, timeout=15).close()
+            except Exception as exc:
+                print(f"[sync] Push su GitHub fallito: {exc}")
+    threading.Thread(target=_worker, daemon=True).start()
+
 
 @contextmanager
 def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    before = conn.total_changes
     try:
         yield conn
         conn.commit()
+        changed = conn.total_changes > before
     finally:
         conn.close()
+    if changed:
+        _push_db_to_github()
 
 
 def init_db():
+    _pull_db_from_github()
     with db() as c:
         c.executescript(SCHEMA)
         for k, v in DEFAULT_SETTINGS.items():
@@ -633,8 +702,7 @@ def admin_update_fixture(fid: int, u: FixtureUpdate, x_admin_token: Optional[str
 def admin_delete_fixture(fid: int, x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
     with db() as c:
-        if c.execute("SELECT 1 FROM bookings WHERE fixture_id=?", (fid,)).fetchone():
-            raise HTTPException(400, "Ci sono prenotazioni: annulla la partita invece di eliminarla")
+        c.execute("DELETE FROM bookings WHERE fixture_id=?", (fid,))
         c.execute("DELETE FROM fixtures WHERE id=?", (fid,))
     return {"ok": True}
 
@@ -658,6 +726,20 @@ def admin_update_booking(bid: int, u: BookingUpdate, x_admin_token: Optional[str
             c.execute(f"UPDATE bookings SET {', '.join(k + '=?' for k in data)} WHERE id=?", (*data.values(), bid))
         # se tutte le prenotazioni di una partita sono annullate, la partita torna libera
         b = c.execute("SELECT fixture_id FROM bookings WHERE id=?", (bid,)).fetchone()
+        if b:
+            active = c.execute("SELECT COUNT(*) FROM bookings WHERE fixture_id=? AND status!='cancelled'",
+                               (b["fixture_id"],)).fetchone()[0]
+            if not active:
+                c.execute("UPDATE fixtures SET status='open' WHERE id=? AND status='booked'", (b["fixture_id"],))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/bookings/{bid}")
+def admin_delete_booking(bid: int, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    with db() as c:
+        b = c.execute("SELECT fixture_id FROM bookings WHERE id=?", (bid,)).fetchone()
+        c.execute("DELETE FROM bookings WHERE id=?", (bid,))
         if b:
             active = c.execute("SELECT COUNT(*) FROM bookings WHERE fixture_id=? AND status!='cancelled'",
                                (b["fixture_id"],)).fetchone()[0]
@@ -696,6 +778,15 @@ def admin_update_team(tid: int, u: TeamUpdate, x_admin_token: Optional[str] = He
     if data:
         with db() as c:
             c.execute(f"UPDATE teams SET {', '.join(k + '=?' for k in data)} WHERE id=?", (*data.values(), tid))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/teams/{tid}")
+def admin_delete_team(tid: int, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    with db() as c:
+        c.execute("UPDATE bookings SET team_id=NULL WHERE team_id=?", (tid,))
+        c.execute("DELETE FROM teams WHERE id=?", (tid,))
     return {"ok": True}
 
 
@@ -751,7 +842,9 @@ def admin_delete_sponsor(sid: int, x_admin_token: Optional[str] = Header(None)):
 def admin_get_settings(x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
     with db() as c:
-        return get_settings(c)
+        s = get_settings(c)
+        s["_cloud_sync"] = bool(GITHUB_TOKEN and GITHUB_REPO)
+        return s
 
 
 @app.put("/api/admin/settings")
@@ -762,3 +855,28 @@ def admin_put_settings(data: dict, x_admin_token: Optional[str] = Header(None)):
             if k in DEFAULT_SETTINGS:
                 c.execute("INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)", (k, str(v)))
     return {"ok": True}
+
+
+@app.get("/api/admin/backup")
+def admin_backup_db(token: Optional[str] = None, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token or token)
+    return Response(
+        content=DB_PATH.read_bytes(),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="csi_imola_backup_{date.today().isoformat()}.db"'},
+    )
+
+
+@app.post("/api/admin/restore")
+def admin_restore_db(body: dict, x_admin_token: Optional[str] = Header(None)):
+    require_admin(x_admin_token)
+    b64 = body.get("data_b64", "")
+    if not b64:
+        raise HTTPException(400, "File vuoto")
+    raw = base64.b64decode(b64)
+    if not raw.startswith(b"SQLite format 3"):
+        raise HTTPException(400, "Il file non è un database SQLite valido")
+    DB_PATH.write_bytes(raw)
+    _push_db_to_github()
+    return {"ok": True}
+
